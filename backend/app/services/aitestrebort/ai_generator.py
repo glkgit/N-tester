@@ -375,12 +375,146 @@ class AITestCaseGenerator:
                         }
                     ],
                     "notes": f"验证{requirement}的安全性，确保系统能够抵御常见的安全威胁"
+                },
+                {
+                    "name": f"{requirement} - UI界面测试",
+                    "level": "P3",
+                    "precondition": "系统正常运行，UI界面测试环境准备就绪",
+                    "steps": [
+                        {"step_number": 1, "description": "进入功能页面", "expected_result": "页面布局正常，所有元素显示正确"},
+                        {"step_number": 2, "description": "检查界面元素和交互", "expected_result": "界面元素齐全，交互响应正常"},
+                        {"step_number": 3, "description": "验证响应式布局", "expected_result": "不同分辨率下界面显示正常"}
+                    ],
+                    "notes": f"验证{requirement}的UI界面显示和交互是否符合设计规范"
+                },
+                {
+                    "name": f"{requirement} - 空值输入测试",
+                    "level": "P2",
+                    "precondition": "系统正常运行，准备空值测试数据",
+                    "steps": [
+                        {"step_number": 1, "description": "进入功能页面", "expected_result": "页面正常加载"},
+                        {"step_number": 2, "description": "不输入任何内容提交", "expected_result": "系统正确提示必填项"},
+                        {"step_number": 3, "description": "验证空值处理", "expected_result": "系统正确处理空值输入"}
+                    ],
+                    "notes": f"验证{requirement}对空值输入的处理能力"
+                },
+                {
+                    "name": f"{requirement} - 权限验证测试",
+                    "level": "P1",
+                    "precondition": "系统正常运行，准备不同权限账号",
+                    "steps": [
+                        {"step_number": 1, "description": "使用普通用户账号登录", "expected_result": "普通用户可正常访问"},
+                        {"step_number": 2, "description": "尝试越权操作", "expected_result": "系统正确拦截越权操作"},
+                        {"step_number": 3, "description": "验证权限控制", "expected_result": "权限控制生效"}
+                    ],
+                    "notes": f"验证{requirement}的权限控制机制"
+                },
+                {
+                    "name": f"{requirement} - 数据持久化测试",
+                    "level": "P1",
+                    "precondition": "系统正常运行，数据库连接正常",
+                    "steps": [
+                        {"step_number": 1, "description": "执行数据操作", "expected_result": "数据操作成功"},
+                        {"step_number": 2, "description": "刷新页面或重新登录", "expected_result": "数据正确保存"},
+                        {"step_number": 3, "description": "验证数据完整性", "expected_result": "数据持久化正确"}
+                    ],
+                    "notes": f"验证{requirement}的数据持久化功能"
                 }
             ]
-            
+
+            # 如果请求数量超过基础场景数量，则动态生成更多场景
+            all_scenarios = list(test_scenarios)
+
+            if count > len(test_scenarios):
+                # 动态生成额外的高质量测试用例
+                extra_scenarios = [
+                    {
+                        "name": f"{requirement} - 并发操作测试",
+                        "level": "P2",
+                        "precondition": "系统正常运行，准备并发测试环境",
+                        "steps": [
+                            {"step_number": 1, "description": "准备多个并发请求", "expected_result": "测试环境就绪"},
+                            {"step_number": 2, "description": "同时执行相同操作", "expected_result": "系统正确处理并发请求"},
+                            {"step_number": 3, "description": "验证数据一致性", "expected_result": "数据保持一致，无冲突"}
+                        ],
+                        "notes": f"验证{requirement}在并发场景下的正确性"
+                    },
+                    {
+                        "name": f"{requirement} - 数据校验测试",
+                        "level": "P2",
+                        "precondition": "系统正常运行，准备校验规则测试数据",
+                        "steps": [
+                            {"step_number": 1, "description": "进入功能页面", "expected_result": "页面正常加载"},
+                            {"step_number": 2, "description": "输入不符合格式的数据", "expected_result": "系统提示数据格式错误"},
+                            {"step_number": 3, "description": "输入符合格式的数据", "expected_result": "数据校验通过"}
+                        ],
+                        "notes": f"验证{requirement}的数据校验功能"
+                    },
+                    {
+                        "name": f"{requirement} - 会话管理测试",
+                        "level": "P2",
+                        "precondition": "系统正常运行，会话测试环境准备就绪",
+                        "steps": [
+                            {"step_number": 1, "description": "登录系统并执行操作", "expected_result": "会话创建成功"},
+                            {"step_number": 2, "description": "会话超时后操作", "expected_result": "系统正确处理会话超时"},
+                            {"step_number": 3, "description": "验证会话恢复", "expected_result": "会话管理正常"}
+                        ],
+                        "notes": f"验证{requirement}的会话管理功能"
+                    },
+                    {
+                        "name": f"{requirement} - 日志记录测试",
+                        "level": "P3",
+                        "precondition": "系统正常运行，日志系统就绪",
+                        "steps": [
+                            {"step_number": 1, "description": "执行关键操作", "expected_result": "操作正常执行"},
+                            {"step_number": 2, "description": "检查系统日志", "expected_result": "操作被正确记录"},
+                            {"step_number": 3, "description": "验证日志完整性", "expected_result": "日志记录完整准确"}
+                        ],
+                        "notes": f"验证{requirement}的操作日志记录功能"
+                    },
+                    {
+                        "name": f"{requirement} - 错误恢复测试",
+                        "level": "P2",
+                        "precondition": "系统正常运行，准备错误恢复测试场景",
+                        "steps": [
+                            {"step_number": 1, "description": "模拟系统异常", "expected_result": "异常被正确捕获"},
+                            {"step_number": 2, "description": "执行恢复操作", "expected_result": "系统恢复正常"},
+                            {"step_number": 3, "description": "验证数据状态", "expected_result": "数据状态一致"}
+                        ],
+                        "notes": f"验证{requirement}的错误恢复能力"
+                    },
+                    {
+                        "name": f"{requirement} - 接口兼容性测试",
+                        "level": "P3",
+                        "precondition": "系统正常运行，准备不同客户端环境",
+                        "steps": [
+                            {"step_number": 1, "description": "使用不同浏览器访问", "expected_result": "各浏览器显示正常"},
+                            {"step_number": 2, "description": "验证接口兼容性", "expected_result": "接口响应正常"},
+                            {"step_number": 3, "description": "检查功能一致性", "expected_result": "各平台功能一致"}
+                        ],
+                        "notes": f"验证{requirement}的跨平台兼容性"
+                    }
+                ]
+                all_scenarios.extend(extra_scenarios)
+
+            # 如果请求数量更多，继续生成更多变体
+            while len(all_scenarios) < count:
+                variant_num = len(all_scenarios) - len(test_scenarios) + 1
+                all_scenarios.append({
+                    "name": f"{requirement} - 组合场景测试 {variant_num}",
+                    "level": "P2",
+                    "precondition": "系统正常运行，测试环境准备就绪",
+                    "steps": [
+                        {"step_number": 1, "description": "准备测试数据和环境", "expected_result": "测试环境就绪"},
+                        {"step_number": 2, "description": "执行组合场景操作", "expected_result": "操作正常执行"},
+                        {"step_number": 3, "description": "验证综合结果", "expected_result": "综合测试通过"}
+                    ],
+                    "notes": f"验证{requirement}在复杂组合场景下的表现"
+                })
+
             # 根据请求数量选择测试场景
-            for i in range(min(count, len(test_scenarios))):
-                testcases.append(test_scenarios[i])
+            for i in range(min(count, len(all_scenarios))):
+                testcases.append(all_scenarios[i])
             
             logger.info(f"成功生成 {len(testcases)} 个高质量测试用例")
             return testcases

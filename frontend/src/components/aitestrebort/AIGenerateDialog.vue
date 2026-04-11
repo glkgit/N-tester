@@ -67,16 +67,17 @@
       </el-form-item>
 
       <!-- 内容预览 -->
-      <el-form-item 
-        v-if="selectedSourceContent" 
+      <el-form-item
+        v-if="selectedSourceContent"
         label="内容预览"
       >
         <el-input
           :model-value="selectedSourceContent"
           type="textarea"
-          :rows="4"
+          :rows="8"
           readonly
           placeholder="选择来源后显示内容预览"
+          style="font-size: 12px;"
         />
       </el-form-item>
 
@@ -274,16 +275,17 @@
         </el-form-item>
 
         <!-- 对话模式的内容预览 -->
-        <el-form-item 
-          v-if="chatForm.source_id && selectedSourceContent" 
+        <el-form-item
+          v-if="chatForm.source_id && selectedSourceContent"
           label="内容预览"
         >
           <el-input
             :model-value="selectedSourceContent"
             type="textarea"
-            :rows="3"
+            :rows="6"
             readonly
             placeholder="选择来源后显示内容预览"
+            style="font-size: 12px;"
           />
         </el-form-item>
       </el-form>
@@ -518,7 +520,7 @@ const chatConversationId = ref<number | null>(null)
 // 对话模式表单
 const chatForm = reactive({
   module_id: props.defaultModuleId,
-  count: 3,
+  count: 10,  // 默认生成10个测试用例
   source_type: 'manual' as 'manual' | 'document' | 'requirement' | 'module',
   source_id: undefined as string | undefined
 })
@@ -527,7 +529,7 @@ const chatForm = reactive({
 const form = reactive<AIGenerateRequest>({
   requirement: '',
   module_id: props.defaultModuleId,
-  count: 3,
+  count: 10,  // 默认生成10个测试用例
   context: '',
   source_type: 'manual',
   source_id: undefined,
@@ -627,7 +629,11 @@ const previewChatContent = async () => {
     // 由于响应拦截器的处理，response 直接就是业务数据
     if (response && response.status === 200) {
       const content = response.data.content || ''
-      selectedSourceContent.value = content.length > 300 ? content.substring(0, 300) + '...' : content
+      // 增加预览字符限制到10000字符，同时保留截断提示
+      const maxPreviewLength = 10000
+      selectedSourceContent.value = content.length > maxPreviewLength
+        ? content.substring(0, maxPreviewLength) + `\n\n[内容已截断，完整内容长度: ${content.length} 字符]`
+        : content
       console.log('对话模式内容预览设置成功:', selectedSourceContent.value.substring(0, 100) + '...')
     } else {
       console.error('获取对话模式内容预览失败，响应:', response)
@@ -1335,7 +1341,11 @@ const previewContent = async () => {
     // 由于响应拦截器的处理，response 直接就是业务数据
     if (response && response.status === 200) {
       const content = response.data.content || ''
-      selectedSourceContent.value = content.length > 300 ? content.substring(0, 300) + '...' : content
+      // 增加预览字符限制到10000字符，同时保留截断提示
+      const maxPreviewLength = 10000
+      selectedSourceContent.value = content.length > maxPreviewLength
+        ? content.substring(0, maxPreviewLength) + `\n\n[内容已截断，完整内容长度: ${content.length} 字符]`
+        : content
     } else {
       console.error('获取内容预览失败，响应:', response)
       ElMessage.warning(response?.message || '获取内容预览失败')
@@ -1470,7 +1480,7 @@ const resetForm = () => {
   selectedSourceContent.value = ''
   form.requirement = ''
   form.module_id = props.defaultModuleId
-  form.count = 3
+  form.count = 10  // 默认生成10个测试用例
   form.context = ''
   form.source_type = 'manual'
   form.source_id = undefined
@@ -1478,12 +1488,12 @@ const resetForm = () => {
   form.prompt_id = undefined
   form.enable_knowledge = false
   form.knowledge_base_ids = []
-  
+
   // 重置对话模式数据
   chatMessages.value = []
   chatInput.value = ''
   chatForm.module_id = props.defaultModuleId
-  chatForm.count = 3
+  chatForm.count = 10  // 默认生成10个测试用例
   chatForm.source_type = 'manual'
   chatForm.source_id = undefined
   chatConversationId.value = null

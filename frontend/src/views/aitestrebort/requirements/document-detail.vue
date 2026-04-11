@@ -99,7 +99,8 @@
                   <div class="formatted-content" v-html="formatDocumentContent(document.content, document.images)"></div>
                 </div>
 
-                <!-- 图片预览区域 -->
+                <!-- 图片预览区域 - 已禁用，图片内容直接显示在正文中 -->
+                <!--
                 <div v-if="document.images && document.images.length > 0" class="document-images">
                   <el-divider content-position="left">
                     <el-icon><Picture /></el-icon>
@@ -132,6 +133,7 @@
                     </el-card>
                   </div>
                 </div>
+                -->
               </div>
 
               <el-empty v-else description="暂无文档内容">
@@ -586,7 +588,7 @@ const getModulePreview = (content: string) => {
 const formatDocumentContent = (content: string, images: any[] = []) => {
   if (!content) return ''
 
-  // 转义HTML特殊字符（完全兼容版本）
+  // 转义HTML特殊字符
   const escapeHtml = (text: string) => {
     return text
       .replace(/&/g, '&amp;')
@@ -596,97 +598,13 @@ const formatDocumentContent = (content: string, images: any[] = []) => {
       .replace(/'/g, '&#39;')
   }
 
-  // 生成表格HTML的辅助函数
-  const generateTableHtml = (tableContent: string): string => {
-    const rows = tableContent.trim().split('\n').filter(row => row.trim().length > 0)
-    if (rows.length === 0) return ''
-
-    let tableHtml = '<div class="document-table"><table class="doc-table">'
-
-    rows.forEach((row, rowIndex) => {
-      // 清理行：移除首尾的 | 符号
-      const cleanRow = row.trim().replace(/^\|+|\|+$/g, '')
-      // 用 | 分隔单元格
-      const cells = cleanRow.split('|').map(cell => escapeHtml(cell.trim()))
-
-      if (rowIndex === 0) {
-        // 表头
-        tableHtml += '<thead><tr>' + cells.map(cell => `<th>${cell}</th>`).join('') + '</tr></thead><tbody>'
-      } else {
-        tableHtml += '<tr>' + cells.map(cell => `<td>${cell}</td>`).join('') + '</tr>'
-      }
-    })
-
-    tableHtml += '</tbody></table></div>'
-    return tableHtml
-  }
-
-  // 第一步：提取所有表格内容并替换为占位符，同时生成表格HTML
+  // 简单处理：移除表格标记，保留表格内容作为纯文本
   let processedContent = content
-  const tableHtmls: string[] = []
+    .replace(/【表格】/g, '\n\n【表格内容】\n')
+    .replace(/【表格结束】/g, '\n【表格内容结束】\n')
 
-  // 方式1: 处理 【表格】...【表格结束】 格式（来自Word文档）
-  processedContent = processedContent.replace(/【表格】([\s\S]*?)【表格结束】/g, (match, tableContent) => {
-    const tableHtml = generateTableHtml(tableContent)
-    tableHtmls.push(tableHtml)
-    return `__TABLE_PLACEHOLDER_${tableHtmls.length - 1}__`
-  })
-
-  // 方式2: 识别直接用 | 分隔的表格
-  const lines = processedContent.split('\n')
-  const newLines: string[] = []
-  let inTable = false
-  let tableBuffer: string[] = []
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const trimmedLine = line.trim()
-    const pipeCount = (trimmedLine.match(/\|/g) || []).length
-    const isTableRow = pipeCount >= 3 && trimmedLine.includes(' | ')
-    const isEmptyLine = trimmedLine === ''
-
-    if (isTableRow) {
-      if (!inTable) {
-        inTable = true
-        if (tableBuffer.length > 0) {
-          newLines.push(...tableBuffer)
-          tableBuffer = []
-        }
-        tableBuffer.push('__TABLE_START__')
-      }
-      tableBuffer.push(trimmedLine)
-    } else if (!isEmptyLine) {
-      if (inTable) {
-        tableBuffer.push('__TABLE_END__')
-        newLines.push(...tableBuffer)
-        tableBuffer = []
-        inTable = false
-      }
-      newLines.push(line)
-    }
-  }
-
-  if (inTable && tableBuffer.length > 0) {
-    tableBuffer.push('__TABLE_END__')
-    newLines.push(...tableBuffer)
-  }
-
-  processedContent = newLines.join('\n')
-
-  // 从方式2检测到的表格生成HTML
-  processedContent = processedContent.replace(/__TABLE_START__([\s\S]*?)__TABLE_END__/g, (match, tableContent) => {
-    const tableHtml = generateTableHtml(tableContent)
-    tableHtmls.push(tableHtml)
-    return `__TABLE_PLACEHOLDER_${tableHtmls.length - 1}__`
-  })
-
-  // 转义剩余内容
+  // 转义HTML
   let formatted = escapeHtml(processedContent)
-
-  // 替换占位符为表格HTML
-  tableHtmls.forEach((tableHtml, index) => {
-    formatted = formatted.replace(new RegExp(`__TABLE_PLACEHOLDER_${index}__`, 'g'), tableHtml)
-  })
 
   // 处理PDF页面标记
   formatted = formatted.replace(/=== 第 (\d+) 页 ===/g, '<div class="page-marker">📄 第 $1 页</div>')
@@ -708,36 +626,10 @@ const formatDocumentContent = (content: string, images: any[] = []) => {
   // 处理URL链接
   formatted = formatted.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="doc-link">$1</a>')
 
-  // 处理图片占位符 - 将 __IMAGE_N__ 替换为实际图片
-  if (images && images.length > 0) {
-    // 按图片索引替换占位符
-    images.forEach((img, index) => {
-      // Word图片格式: __IMAGE_N__
-      const wordPlaceholder = `__IMAGE_${index + 1}__`
-      // PDF图片格式: __IMAGE_PAGE_N__
-      const pdfPlaceholder = `__IMAGE_\\d+_${index + 1}__`
-
-      if (img.base64) {
-        const imgHtml = `<div class="inline-image"><img src="${img.base64}" alt="${img.description || '图片'}" class="content-image" /></div>`
-
-        // 替换Word格式占位符
-        formatted = formatted.replace(wordPlaceholder, imgHtml)
-
-        // 替换PDF格式占位符（贪婪模式替换所有页面的相同索引图片）
-        formatted = formatted.replace(new RegExp(pdfPlaceholder, 'g'), imgHtml)
-      }
-    })
-  }
-
-  // 处理换行和段落
-  formatted = formatted.replace(/\n\n/g, '</p><p class="doc-paragraph">')
+  // 处理换行
   formatted = formatted.replace(/\n/g, '<br>')
-  formatted = '<p class="doc-paragraph">' + formatted + '</p>'
 
-  // 处理列表项
-  formatted = formatted.replace(/<br>(\d+)\. (.+?)(?=<br>|$)/g, '<div class="doc-list-item"><span class="list-number">$1.</span> $2</div>')
-
-  return formatted
+  return `<div class="doc-text">${formatted}</div>`
 }
 
 const getDocumentTypeName = (type: string) => {
@@ -1358,6 +1250,19 @@ onMounted(() => {
 .stat-item.image-count {
   color: #67c23a;
   font-weight: 500;
+}
+
+/* 文档文本样式 */
+.doc-text {
+  line-height: 1.8;
+  color: #303133;
+  font-size: 14px;
+}
+
+.doc-text br {
+  display: block;
+  content: "";
+  margin: 4px 0;
 }
 
 /* 内嵌图片样式 */
