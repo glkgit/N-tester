@@ -586,11 +586,6 @@ const getModulePreview = (content: string) => {
 const formatDocumentContent = (content: string, images: any[] = []) => {
   if (!content) return ''
 
-  // 调试：查看原始内容前500字符
-  console.error('[表格检测] 原始内容前500字符:', content.substring(0, 500))
-  console.error('[表格检测] 是否包含【表格】标记:', content.includes('【表格】'))
-  console.error('[表格检测] 是否包含 | 字符:', content.includes('|'))
-
   // 转义HTML特殊字符（完全兼容版本）
   const escapeHtml = (text: string) => {
     return text
@@ -601,48 +596,59 @@ const formatDocumentContent = (content: string, images: any[] = []) => {
       .replace(/'/g, '&#39;')
   }
 
-  // 处理表格标记，将【表格】内容提取出来暂存
+  // 生成表格HTML的辅助函数
+  const generateTableHtml = (tableContent: string): string => {
+    const rows = tableContent.trim().split('\n').filter(row => row.trim().length > 0)
+    if (rows.length === 0) return ''
+
+    let tableHtml = '<div class="document-table"><table class="doc-table">'
+
+    rows.forEach((row, rowIndex) => {
+      // 清理行：移除首尾的 | 符号
+      const cleanRow = row.trim().replace(/^\|+|\|+$/g, '')
+      // 用 | 分隔单元格
+      const cells = cleanRow.split('|').map(cell => escapeHtml(cell.trim()))
+
+      if (rowIndex === 0) {
+        // 表头
+        tableHtml += '<thead><tr>' + cells.map(cell => `<th>${cell}</th>`).join('') + '</tr></thead><tbody>'
+      } else {
+        tableHtml += '<tr>' + cells.map(cell => `<td>${cell}</td>`).join('') + '</tr>'
+      }
+    })
+
+    tableHtml += '</tbody></table></div>'
+    return tableHtml
+  }
+
+  // 第一步：提取所有表格内容并替换为占位符，同时生成表格HTML
   let processedContent = content
-  const finalTables: string[] = []
+  const tableHtmls: string[] = []
 
   // 方式1: 处理 【表格】...【表格结束】 格式（来自Word文档）
   processedContent = processedContent.replace(/【表格】([\s\S]*?)【表格结束】/g, (match, tableContent) => {
-    finalTables.push(tableContent)
-    return `__TABLE_PLACEHOLDER_${finalTables.length - 1}__`
+    const tableHtml = generateTableHtml(tableContent)
+    tableHtmls.push(tableHtml)
+    return `__TABLE_PLACEHOLDER_${tableHtmls.length - 1}__`
   })
 
-  // 方式2: 识别直接用 | 分隔的表格（Markdown格式或没有标记的表格）
-  // 将连续的以 | 分隔的行转换为表格格式
+  // 方式2: 识别直接用 | 分隔的表格
   const lines = processedContent.split('\n')
   const newLines: string[] = []
   let inTable = false
   let tableBuffer: string[] = []
 
-  // 调试：统计表格行检测情况
-  let totalLines = lines.length
-  let detectedTableRows = 0
-  let nonTableRows = 0
-
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const trimmedLine = line.trim()
-
-    // 判断这行是否是表格行（有多个 | 分隔）
-    // 表格行可能有 "功能 ID | 功能名称" 格式或 "| 功能 ID | 功能名称" 格式
     const pipeCount = (trimmedLine.match(/\|/g) || []).length
     const isTableRow = pipeCount >= 3 && trimmedLine.includes(' | ')
-
-    // 跳过空行（但如果在表格中则不跳过）
     const isEmptyLine = trimmedLine === ''
 
     if (isTableRow) {
-      detectedTableRows++
-      // 是表格行
       if (!inTable) {
-        // 开始新表格
         inTable = true
         if (tableBuffer.length > 0) {
-          // 先输出之前的非表格内容
           newLines.push(...tableBuffer)
           tableBuffer = []
         }
@@ -650,10 +656,7 @@ const formatDocumentContent = (content: string, images: any[] = []) => {
       }
       tableBuffer.push(trimmedLine)
     } else if (!isEmptyLine) {
-      // 不是表格行且不是空行（空行在表格中被忽略）
-      nonTableRows++
       if (inTable) {
-        // 结束当前表格
         tableBuffer.push('__TABLE_END__')
         newLines.push(...tableBuffer)
         tableBuffer = []
@@ -661,28 +664,29 @@ const formatDocumentContent = (content: string, images: any[] = []) => {
       }
       newLines.push(line)
     }
-    // 空行不输出（既不是表格内容也不是正文）
   }
 
-  // 处理末尾可能剩余的表格
   if (inTable && tableBuffer.length > 0) {
     tableBuffer.push('__TABLE_END__')
     newLines.push(...tableBuffer)
   }
 
   processedContent = newLines.join('\n')
-  console.error(`[表格检测] 总行数: ${totalLines}, 检测到表格行: ${detectedTableRows}, 非表格行: ${nonTableRows}`)
 
-  // 从新的标记中提取表格（方式2检测到的）
+  // 从方式2检测到的表格生成HTML
   processedContent = processedContent.replace(/__TABLE_START__([\s\S]*?)__TABLE_END__/g, (match, tableContent) => {
-    finalTables.push(tableContent)
-    return `__TABLE_PLACEHOLDER_${finalTables.length - 1}__`
+    const tableHtml = generateTableHtml(tableContent)
+    tableHtmls.push(tableHtml)
+    return `__TABLE_PLACEHOLDER_${tableHtmls.length - 1}__`
   })
-
-  console.error('识别到的表格数量:', finalTables.length)
 
   // 转义剩余内容
   let formatted = escapeHtml(processedContent)
+
+  // 替换占位符为表格HTML
+  tableHtmls.forEach((tableHtml, index) => {
+    formatted = formatted.replace(new RegExp(`__TABLE_PLACEHOLDER_${index}__`, 'g'), tableHtml)
+  })
 
   // 处理PDF页面标记
   formatted = formatted.replace(/=== 第 (\d+) 页 ===/g, '<div class="page-marker">📄 第 $1 页</div>')
@@ -703,30 +707,6 @@ const formatDocumentContent = (content: string, images: any[] = []) => {
 
   // 处理URL链接
   formatted = formatted.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="doc-link">$1</a>')
-
-  // 恢复表格并渲染
-  finalTables.forEach((tableContent, index) => {
-    const rows = tableContent.trim().split('\n').filter(row => row.trim().length > 0)
-
-    let tableHtml = '<div class="document-table"><table class="doc-table">'
-
-    rows.forEach((row, rowIndex) => {
-      // 清理行：移除首尾的 | 符号
-      const cleanRow = row.trim().replace(/^\|+|\|+$/g, '')
-      // 用 | 分隔单元格
-      const cells = cleanRow.split('|').map(cell => cell.trim())
-
-      if (rowIndex === 0) {
-        // 表头
-        tableHtml += '<thead><tr>' + cells.map(cell => `<th>${cell}</th>`).join('') + '</tr></thead><tbody>'
-      } else {
-        tableHtml += '<tr>' + cells.map(cell => `<td>${cell}</td>`).join('') + '</tr>'
-      }
-    })
-
-    tableHtml += '</tbody></table></div>'
-    formatted = formatted.replace(`__TABLE_PLACEHOLDER_${index}__`, tableHtml)
-  })
 
   // 处理图片占位符 - 将 __IMAGE_N__ 替换为实际图片
   if (images && images.length > 0) {
