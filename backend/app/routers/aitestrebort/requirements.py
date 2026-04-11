@@ -224,14 +224,19 @@ async def get_requirement_document(
         if document.project_id != project_id:
             return request.app.error(msg="无权限访问此文档", code=403)
 
-        # 提取文档中的图片
+        # 提取文档中的图片和内容
         images = []
+        content = document.content
         if document.file_path:
             try:
                 from app.services.aitestrebort.requirements_service import DocumentProcessor
                 doc_processor = DocumentProcessor()
                 doc_data = doc_processor.extract_content_with_images(document)
                 images = doc_data.get("images", [])
+                # 如果数据库中没有内容，从文件重新提取
+                if not content or len(content) < 20:
+                    content = doc_data.get("content", "")
+                    logger.info(f"从文件重新提取文档内容，长度: {len(content)}")
                 logger.info(f"文档包含 {len(images)} 张图片")
             except Exception as img_err:
                 logger.warning(f"提取文档图片失败: {img_err}")
@@ -243,7 +248,7 @@ async def get_requirement_document(
             "title": document.title,
             "description": document.description,
             "document_type": document.document_type,
-            "content": document.content,  # 确保包含content字段
+            "content": content,  # 使用提取的内容
             "status": document.status,
             "version": document.version,
             "is_latest": document.is_latest,

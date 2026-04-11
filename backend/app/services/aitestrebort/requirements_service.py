@@ -983,6 +983,14 @@ class DocumentProcessor:
         """从Word文档提取图片，返回base64数据"""
         images = []
         try:
+            file_extension = file_path.lower().split('.')[-1]
+
+            if file_extension == 'doc':
+                # 旧版 .doc 格式不支持图片提取
+                logger.info("旧版Word文档(.doc)不支持图片提取")
+                return images
+
+            # 新版 .docx 格式
             from docx import Document
             import base64
             import re
@@ -1094,7 +1102,27 @@ class DocumentProcessor:
     
     def _extract_from_markdown(self, file_path: str) -> str:
         """提取Markdown文件内容"""
-        return self._extract_from_txt(file_path)  # Markdown本质上是文本文件
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Markdown图片语法：![alt](url) - 保留原格式，添加占位符标记
+            import re
+            image_index = [0]  # 使用列表以便在闭包中修改
+
+            def replace_image(match):
+                image_index[0] += 1
+                alt_text = match.group(1)
+                url = match.group(2)
+                return f'\n__IMAGE_{image_index[0]}__\n({url})\n'
+
+            # 替换图片语法为带占位符的格式
+            content = re.sub(r'!\[([^\]]*)\]\(([^\)]+)\)', replace_image, content)
+
+            return content
+        except Exception as e:
+            logger.warning(f"Markdown解析失败: {e}")
+            return self._extract_from_txt(file_path)
     
     def _extract_from_pdf(self, file_path: str) -> str:
         """提取PDF文件内容"""
@@ -1123,36 +1151,59 @@ class DocumentProcessor:
     def _extract_pdf_with_pypdf(self, file_path: str) -> str:
         """使用pypdf库提取PDF内容"""
         import pypdf
-        
+
         content_parts = []
-        
+        page_image_count = {}
+
         with open(file_path, 'rb') as file:
             pdf_reader = pypdf.PdfReader(file)
-            
+
             # 获取PDF信息
             num_pages = len(pdf_reader.pages)
             logger.info(f"PDF文档共有 {num_pages} 页（使用pypdf）")
-            
+
             # 提取每一页的文本
             for page_num in range(num_pages):
                 try:
                     page = pdf_reader.pages[page_num]
                     page_text = page.extract_text()
-                    
-                    if page_text.strip():
+
+                    # 检测该页是否有图片
+                    has_image = False
+                    image_count = 0
+                    if '/Resources' in page and '/XObject' in page['/Resources']:
+                        xobjects = page['/Resources']['/XObject'].get_object()
+                        for obj_name in xobjects:
+                            obj = xobjects[obj_name]
+                            if obj.get('/Subtype') == '/Image':
+                                has_image = True
+                                image_count += 1
+
+                    if page_text.strip() or has_image:
                         # 添加页码标记
                         content_parts.append(f"=== 第 {page_num + 1} 页 ===")
-                        content_parts.append(page_text.strip())
+                        if page_text.strip():
+                            content_parts.append(page_text.strip())
+
+                        # 如果该页有图片，添加图片占位符
+                        if has_image:
+                            if page_num + 1 not in page_image_count:
+                                page_image_count[page_num + 1] = 0
+                            for i in range(image_count):
+                                page_image_count[page_num + 1] += 1
+                                content_parts.append(f'\n__IMAGE_{page_num + 1}_{page_image_count[page_num + 1]}__\n')
+
                         content_parts.append("")  # 添加空行分隔
-                    
+
                 except Exception as e:
                     logger.warning(f"提取第 {page_num + 1} 页内容失败: {e}")
                     continue
-        
+
         content = "\n".join(content_parts)
-        
+
         if content.strip():
-            logger.info(f"成功解析PDF文档（pypdf），提取内容长度: {len(content)} 字符")
+            total_images = sum(page_image_count.values())
+            logger.info(f"成功解析PDF文档（pypdf），提取内容长度: {len(content)} 字符, 检测到图片: {total_images} 张")
             return content
         else:
             logger.warning("PDF文档中未提取到文本内容，可能是扫描版PDF")
@@ -1197,14 +1248,83 @@ class DocumentProcessor:
             return "PDF文档中未找到可提取的文本内容（可能是扫描版PDF）"
     
     def _extract_from_word(self, file_path: str) -> str:
-        """提取Word文件内容，包含表格"""
+        """提取Word文件内容，包含表格和图片占位符"""
+        try:
+            # 判断文件格式
+            file_extension = file_path.lower().split('.')[-1]
+
+            if file_extension == 'doc':
+                # 旧版 .doc 格式，使用 antiword 提取文本
+                return self._extract_from_doc(file_path)
+            elif file_extension in ['docx']:
+                # 新版 .docx 格式，使用 python-docx
+                return self._extract_from_docx(file_path)
+            else:
+                # 未知格式，尝试作为 docx 处理
+                return self._extract_from_docx(file_path)
+
+        except ImportError:
+            logger.error("python-docx库未安装，无法解析Word文档")
+            return "Word文档内容（需要安装python-docx库进行解析）"
+        except Exception as e:
+            logger.error(f"Word文档解析失败: {e}")
+            return ""
+
+    def _extract_from_doc(self, file_path: str) -> str:
+        """使用catdoc提取旧版.doc文件内容"""
+        try:
+            import subprocess
+
+            # 使用catdoc提取文本
+            result = subprocess.run(
+                ['catdoc', file_path],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if result.returncode == 0:
+                content = result.stdout
+                logger.info(f"成功解析旧版Word文档(.doc)，内容长度: {len(content)} 字符")
+                return content
+            else:
+                logger.warning(f"catdoc解析失败: {result.stderr}")
+                # 尝试使用antiword作为备选
+                try:
+                    result2 = subprocess.run(
+                        ['antiword', file_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+                    if result2.returncode == 0:
+                        return result2.stdout
+                except:
+                    pass
+                return f"Word文档内容（catdoc解析失败: {result.stderr}）"
+
+        except FileNotFoundError:
+            logger.error("catdoc未安装，无法解析旧版Word文档(.doc)")
+            return "Word文档内容（需要安装catdoc库来解析旧版.doc文件）"
+        except subprocess.TimeoutExpired:
+            logger.error("catdoc解析超时")
+            return "Word文档内容（解析超时）"
+        except Exception as e:
+            logger.error(f"旧版Word文档(.doc)解析失败: {e}")
+            return f"Word文档内容（解析失败: {str(e)}）"
+
+    def _extract_from_docx(self, file_path: str) -> str:
+        """提取新版.docx Word文件内容，包含表格和图片占位符"""
         try:
             from docx import Document
+            from docx.oxml.ns import qn
+            import re
 
             # 读取Word文档
             doc = Document(file_path)
 
             all_content = []
+            image_index = 0
 
             # 遍历文档中的所有元素（段落和表格交替）
             for element in doc.element.body:
@@ -1212,9 +1332,30 @@ class DocumentProcessor:
                     # 找到对应的段落对象
                     for para in doc.paragraphs:
                         if para._element == element:
+                            # 检查段落中是否有图片
+                            paragraph_xml = para._element.xml
+                            has_image = False
+
+                            # 检测DrawingML图片 (inline图片)
+                            if 'w:drawing' in paragraph_xml or 'pic:blip' in paragraph_xml:
+                                has_image = True
+                            # 检测VML图片 (旧版Word格式)
+                            elif 'w:pict' in paragraph_xml:
+                                has_image = True
+
                             text = para.text.strip()
-                            if text:
+
+                            # 如果段落中有图片，在文本后添加图片占位符
+                            if has_image and text:
+                                image_index += 1
                                 all_content.append(text)
+                                all_content.append(f'\n__IMAGE_{image_index}__\n')
+                            elif text:
+                                all_content.append(text)
+                            elif has_image:
+                                # 只有图片没有文字
+                                image_index += 1
+                                all_content.append(f'__IMAGE_{image_index}__')
                             break
                 elif element.tag.endswith('tbl'):  # 表格
                     # 找到对应的表格对象
@@ -1232,16 +1373,16 @@ class DocumentProcessor:
                             break
 
             content = "\n".join(all_content)
-            logger.info(f"成功解析Word文档，段落数: {len(doc.paragraphs)}, 表格数: {len(doc.tables)}, 内容长度: {len(content)} 字符")
+            logger.info(f"成功解析Word文档(.docx)，段落数: {len(doc.paragraphs)}, 表格数: {len(doc.tables)}, 检测到图片: {image_index} 张, 内容长度: {len(content)} 字符")
             return content
 
         except ImportError:
             logger.error("python-docx库未安装，无法解析Word文档")
             return "Word文档内容（需要安装python-docx库进行解析）"
         except Exception as e:
-            logger.error(f"Word文档解析失败: {e}")
+            logger.error(f"Word文档(.docx)解析失败: {e}")
             return ""
-    
+
     def _extract_from_excel_xlsx(self, file_path: str) -> str:
         """提取Excel文件内容（.xlsx, .xlsm）"""
         try:

@@ -96,7 +96,7 @@
 
                 <!-- 格式化的文档内容 -->
                 <div class="document-content-wrapper" :class="{ 'fullscreen': isFullscreen }">
-                  <div class="formatted-content" v-html="formatDocumentContent(document.content)"></div>
+                  <div class="formatted-content" v-html="formatDocumentContent(document.content, document.images)"></div>
                 </div>
 
                 <!-- 图片预览区域 -->
@@ -583,7 +583,7 @@ const getModulePreview = (content: string) => {
   return content.length > 100 ? content.substring(0, 100) + '...' : content
 }
 
-const formatDocumentContent = (content: string) => {
+const formatDocumentContent = (content: string, images: any[] = []) => {
   if (!content) return ''
 
   // 调试：查看原始内容前500字符
@@ -727,6 +727,27 @@ const formatDocumentContent = (content: string) => {
     tableHtml += '</tbody></table></div>'
     formatted = formatted.replace(`__TABLE_PLACEHOLDER_${index}__`, tableHtml)
   })
+
+  // 处理图片占位符 - 将 __IMAGE_N__ 替换为实际图片
+  if (images && images.length > 0) {
+    // 按图片索引替换占位符
+    images.forEach((img, index) => {
+      // Word图片格式: __IMAGE_N__
+      const wordPlaceholder = `__IMAGE_${index + 1}__`
+      // PDF图片格式: __IMAGE_PAGE_N__
+      const pdfPlaceholder = `__IMAGE_\\d+_${index + 1}__`
+
+      if (img.base64) {
+        const imgHtml = `<div class="inline-image"><img src="${img.base64}" alt="${img.description || '图片'}" class="content-image" /></div>`
+
+        // 替换Word格式占位符
+        formatted = formatted.replace(wordPlaceholder, imgHtml)
+
+        // 替换PDF格式占位符（贪婪模式替换所有页面的相同索引图片）
+        formatted = formatted.replace(new RegExp(pdfPlaceholder, 'g'), imgHtml)
+      }
+    })
+  }
 
   // 处理换行和段落
   formatted = formatted.replace(/\n\n/g, '</p><p class="doc-paragraph">')
@@ -1357,6 +1378,26 @@ onMounted(() => {
 .stat-item.image-count {
   color: #67c23a;
   font-weight: 500;
+}
+
+/* 内嵌图片样式 */
+.inline-image {
+  margin: 16px 0;
+  text-align: center;
+}
+
+.inline-image .content-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+}
+
+.inline-image .content-image:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: scale(1.02);
+  transition: all 0.3s ease;
 }
 
 /* 文档表格样式 */
