@@ -37,3 +37,7 @@ N-Tester_MCP/
 # Environment files
 *.env.local
 *.env.production
+
+# Container-specific configs
+frontend/nginx.conf
+backend/uploads/
