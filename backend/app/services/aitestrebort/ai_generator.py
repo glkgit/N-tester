@@ -711,11 +711,21 @@ async def _generate_testcase_preview(
         generator = RealAITestCaseGenerator(llm_config)
 
         # 生成测试用例数据（不保存到数据库）
-        if count == 1:
-            testcase_data = await generator.generate_single_testcase(enhanced_requirement, enhanced_context)
-            testcases_data = [testcase_data]
-        else:
-            testcases_data = await generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context)
+        try:
+            if count == 1:
+                testcase_data = await generator.generate_single_testcase(enhanced_requirement, enhanced_context)
+                testcases_data = [testcase_data]
+            else:
+                testcases_data = await generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context)
+        except Exception as llm_error:
+            # LLM 调用失败时，记录错误并回退到模拟生成器
+            logger.warning(f"LLM 调用失败: {str(llm_error)}，回退到模拟生成器")
+            mock_generator = AITestCaseGenerator()
+            if count == 1:
+                testcase_data = await mock_generator.generate_single_testcase(enhanced_requirement, enhanced_context)
+                testcases_data = [testcase_data]
+            else:
+                testcases_data = await mock_generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context)
         
         # 构建预览数据（包含完整的测试用例信息，但不保存到数据库）
         preview_testcases = []
