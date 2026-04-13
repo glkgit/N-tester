@@ -412,7 +412,7 @@ const getDefaultProjectId = async () => {
       defaultProjectId.value = Number(stored)
       return
     }
-    
+
     // 如果没有，获取用户的第一个项目
     const response = await projectApi.getProjects({ page_no: 1, page_size: 1 })
     if (response.status === 200 && response.data.items && response.data.items.length > 0) {
@@ -421,6 +421,26 @@ const getDefaultProjectId = async () => {
     }
   } catch (error) {
     console.error('获取默认项目ID失败:', error)
+  }
+}
+
+// 验证并修复项目ID（当项目不存在时自动切换到存在的项目）
+const validateProjectId = async () => {
+  try {
+    // 先获取项目列表，确保defaultProjectId指向存在的项目
+    const response = await projectApi.getProjects({ page_no: 1, page_size: 100 })
+    if (response.status === 200 && response.data.items && response.data.items.length > 0) {
+      const validProjectIds = response.data.items.map((p: any) => p.id)
+
+      // 检查当前项目ID是否有效
+      if (!validProjectIds.includes(defaultProjectId.value)) {
+        console.warn(`项目ID ${defaultProjectId.value} 不存在，自动切换到项目 ${validProjectIds[0]}`)
+        defaultProjectId.value = validProjectIds[0]
+        localStorage.setItem('defaultProjectId', String(defaultProjectId.value))
+      }
+    }
+  } catch (error) {
+    console.error('验证项目ID失败:', error)
   }
 }
 
@@ -555,12 +575,25 @@ const loadConversations = async () => {
     const response = await globalApi.getConversations({ project_id: defaultProjectId.value })
     if (response.status === 200) {
       conversations.value = response.data.conversations || []
+    } else if (response.message?.includes('不存在') || response.message?.includes('项目')) {
+      // 项目不存在，清除并重新获取
+      console.warn('项目不存在，清除缓存的项目ID')
+      localStorage.removeItem('defaultProjectId')
+      await validateProjectId()
+      await loadConversations()
     } else {
       ElMessage.error(response.message || '获取对话列表失败')
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取对话列表失败:', error)
-    ElMessage.error('获取对话列表失败')
+    // 检查是否是项目不存在错误
+    if (error?.response?.data?.message?.includes('不存在')) {
+      localStorage.removeItem('defaultProjectId')
+      await validateProjectId()
+      await loadConversations()
+    } else {
+      ElMessage.error('获取对话列表失败')
+    }
   } finally {
     loading.value = false
   }
@@ -584,9 +617,21 @@ const loadPrompts = async () => {
       // 只显示通用对话类型的提示词，过滤掉程序调用类型
       const allPrompts = response.data.prompts || []
       prompts.value = allPrompts.filter((p: GlobalPrompt) => p.prompt_type === 'general')
+    } else if (response.message?.includes('不存在') || response.message?.includes('项目')) {
+      // 项目不存在，清除并重新获取
+      console.warn('项目不存在，清除缓存的项目ID')
+      localStorage.removeItem('defaultProjectId')
+      await validateProjectId()
+      await loadPrompts()
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取提示词失败:', error)
+    // 检查是否是项目不存在错误
+    if (error?.response?.data?.message?.includes('不存在')) {
+      localStorage.removeItem('defaultProjectId')
+      await validateProjectId()
+      await loadPrompts()
+    }
   }
 }
 
@@ -1112,6 +1157,7 @@ const formatTokenCount = (count: number) => {
 // 生命周期
 onMounted(async () => {
   await getDefaultProjectId()
+  await validateProjectId()  // 验证并修复项目ID
   loadConversations()
   loadLLMConfigs()
   loadPrompts()
