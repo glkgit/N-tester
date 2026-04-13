@@ -232,9 +232,40 @@ const sending = ref(false);
 const connectionStatus = ref<"connected" | "connecting" | "disconnected">("disconnected");
 const error = ref("");
 const messagesContainer = ref<HTMLElement>();
+const currentProjectId = ref<number>(1);
+const currentConversationId = ref<number | null>(null);
 
 // WebSocket 连接
 let ws: WebSocket | null = null;
+
+// 获取有效的项目ID
+const getValidProjectId = async () => {
+  try {
+    // 尝试从localStorage获取
+    const stored = localStorage.getItem('defaultProjectId')
+    if (stored) {
+      currentProjectId.value = Number(stored)
+    }
+
+    // 验证项目是否存在
+    const response = await fetch(`/api/aitestrebort/projects?page_no=1&page_size=100`, {
+      headers: {
+        'access-token': localStorage.getItem('access-token') || ''
+      }
+    })
+    const data = await response.json()
+    if (data.status === 200 && data.data.items && data.data.items.length > 0) {
+      const validProjectIds = data.data.items.map((p: any) => p.id)
+      if (!validProjectIds.includes(currentProjectId.value)) {
+        console.warn(`项目ID ${currentProjectId.value} 不存在，自动切换到项目 ${validProjectIds[0]}`)
+        currentProjectId.value = validProjectIds[0]
+        localStorage.setItem('defaultProjectId', String(currentProjectId.value))
+      }
+    }
+  } catch (error) {
+    console.error('获取有效项目ID失败:', error)
+  }
+}
 
 // 计算属性
 const connectionStatusText = computed(() => {
@@ -251,7 +282,7 @@ const connectionStatusText = computed(() => {
 });
 
 // WebSocket 连接管理
-const connectWebSocket = () => {
+const connectWebSocket = async () => {
   if (ws?.readyState === WebSocket.OPEN) {
     return;
   }
@@ -260,19 +291,23 @@ const connectWebSocket = () => {
   error.value = "";
 
   try {
+    // 确保获取有效的项目ID
+    await getValidProjectId()
+
     // 构建WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const hostname = window.location.hostname;
     const port = '8018'; // 后端端口
-    const conversationId = 1; // 临时使用固定对话ID
-    const projectId = 1; // 临时使用固定项目ID
-    
+    // 使用有效的项目ID，如果没有对话ID则创建新对话或使用默认值
+    const projectId = currentProjectId.value;
+    const conversationId = currentConversationId.value || 1;
+
     // 从localStorage获取token
     const token = localStorage.getItem('access-token') || '';
-    
+
     // 将token作为query参数传递
     const wsUrl = `${protocol}//${hostname}:${port}/api/aitestrebort/projects/${projectId}/conversations/${conversationId}/ws?token=${encodeURIComponent(token)}`;
-    
+
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {

@@ -711,6 +711,12 @@ async def _generate_testcase_preview(
         generator = RealAITestCaseGenerator(llm_config)
 
         # 生成测试用例数据（不保存到数据库）
+        # 如果增强上下文太长，需要截断以避免LLM输出问题
+        max_context_length = 8000
+        if len(enhanced_context) > max_context_length:
+            logger.warning(f"增强上下文过长 ({len(enhanced_context)} 字符)，已截断到 {max_context_length} 字符")
+            enhanced_context = enhanced_context[:max_context_length] + "\n\n[内容已截断]"
+
         try:
             if count == 1:
                 testcase_data = await generator.generate_single_testcase(enhanced_requirement, enhanced_context)
@@ -722,10 +728,10 @@ async def _generate_testcase_preview(
             logger.warning(f"LLM 调用失败: {str(llm_error)}，回退到模拟生成器")
             mock_generator = AITestCaseGenerator()
             if count == 1:
-                testcase_data = await mock_generator.generate_single_testcase(enhanced_requirement, enhanced_context)
+                testcase_data = await mock_generator.generate_single_testcase(enhanced_requirement, enhanced_context[:3000])
                 testcases_data = [testcase_data]
             else:
-                testcases_data = await mock_generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context)
+                testcases_data = await mock_generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context[:3000])
         
         # 构建预览数据（包含完整的测试用例信息，但不保存到数据库）
         preview_testcases = []

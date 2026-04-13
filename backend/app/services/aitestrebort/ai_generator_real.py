@@ -230,19 +230,55 @@ class RealAITestCaseGenerator:
                 if not isinstance(testcases_data, list):
                     # 如果返回的是单个对象，包装成数组
                     testcases_data = [testcases_data]
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError) as json_err:
                 # 如果不是纯JSON，尝试提取JSON数组部分
                 import re
-                json_match = re.search(r'\[.*\]', response_content, re.DOTALL)
+                logger.warning(f"JSON解析失败: {str(json_err)}，尝试提取JSON部分")
+
+                # 尝试多种方式提取JSON
+                extracted = False
+
+                # 方法1：提取数组格式
+                json_match = re.search(r'\[[\s\S]*\]', response_content)
                 if json_match:
-                    testcases_data = json.loads(json_match.group())
-                else:
-                    # 尝试提取单个JSON对象
-                    json_match = re.search(r'\{.*\}', response_content, re.DOTALL)
+                    try:
+                        testcases_data = json.loads(json_match.group())
+                        if isinstance(testcases_data, list):
+                            extracted = True
+                    except:
+                        pass
+
+                # 方法2：提取对象格式并包装成数组
+                if not extracted:
+                    json_match = re.search(r'\{[\s\S]*\}', response_content)
                     if json_match:
-                        testcases_data = [json.loads(json_match.group())]
-                    else:
-                        raise ValueError("LLM response is not valid JSON")
+                        try:
+                            obj = json.loads(json_match.group())
+                            testcases_data = [obj]
+                            extracted = True
+                        except:
+                            pass
+
+                # 方法3：尝试修复常见JSON错误并重新解析
+                if not extracted:
+                    try:
+                        # 移除常见的markdown代码块标记
+                        cleaned = re.sub(r'```(?:json)?\s*', '', response_content)
+                        cleaned = re.sub(r'\s*```', '', cleaned)
+                        # 移除行首的行号
+                        cleaned = re.sub(r'^\d+\.\s*', '', cleaned, flags=re.MULTILINE)
+                        # 移除尾随逗号
+                        cleaned = re.sub(r',\s*([\]}])', r'\1', cleaned)
+
+                        testcases_data = json.loads(cleaned)
+                        if not isinstance(testcases_data, list):
+                            testcases_data = [testcases_data]
+                        extracted = True
+                    except:
+                        pass
+
+                if not extracted:
+                    raise ValueError(f"无法解析LLM响应为JSON: {str(json_err)}")
             
             logger.info(f"Successfully generated {len(testcases_data)} testcases")
             return testcases_data[:count]  # 限制返回数量
