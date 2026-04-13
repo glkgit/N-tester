@@ -336,18 +336,18 @@
             type="textarea"
             :rows="3"
             placeholder="请描述您的测试需求，例如：请为用户登录功能生成测试用例，包括正常登录、密码错误、用户名不存在等场景..."
-            @keydown.ctrl.enter="sendChatMessage"
-            :disabled="chatGenerating"
+            @keydown.enter.exact.prevent="sendChatMessage"
+            @keydown.shift.enter="handleChatShiftEnter"
           />
           <div class="chat-input-actions">
-            <el-button 
-              type="primary" 
+            <el-button
+              type="primary"
               @click="sendChatMessage"
-              :loading="chatGenerating"
-              :disabled="!chatInput.trim() || !chatForm.module_id"
+              :disabled="!chatInput.trim() || !chatForm.module_id || chatGenerating"
             >
-              <el-icon><ChatDotRound /></el-icon>
-              发送 (Ctrl+Enter)
+              <el-icon v-if="!chatGenerating"><ChatDotRound /></el-icon>
+              <el-icon v-else class="is-loading"><Loading /></el-icon>
+              {{ chatGenerating ? '生成中...' : '发送 (Enter)' }}
             </el-button>
           </div>
         </div>
@@ -445,7 +445,7 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { MagicStick, Select, View, ChatDotRound, Document } from '@element-plus/icons-vue'
+import { MagicStick, Select, View, ChatDotRound, Document, Loading } from '@element-plus/icons-vue'
 import { 
   aiGeneratorApi, 
   type AIGenerateRequest, 
@@ -661,6 +661,11 @@ const formatMessageContent = (content: string) => {
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/\n/g, '<br>')
     .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+}
+
+// 处理对话模式Shift+Enter换行
+const handleChatShiftEnter = (event: KeyboardEvent) => {
+  // textarea会在按下Enter时自动添加换行，不需要阻止默认行为
 }
 
 const scrollToBottom = async () => {

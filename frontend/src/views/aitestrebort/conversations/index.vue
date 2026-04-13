@@ -261,9 +261,10 @@
               v-model="messageInput"
               type="textarea"
               :rows="3"
-              placeholder="输入消息... (Ctrl+Enter 发送)"
+              placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
               :disabled="isStreaming"
-              @keydown.ctrl.enter="sendMessage"
+              @keydown.enter.exact.prevent="sendMessage"
+              @keydown.shift.enter="handleShiftEnter"
             />
             <div class="input-actions">
               <span class="input-tip">
@@ -271,15 +272,14 @@
                   <el-icon><Loading /></el-icon>
                   AI 正在思考中...
                 </span>
-                <span v-else>Ctrl + Enter 发送</span>
+                <span v-else>Enter 发送，Shift+Enter 换行</span>
               </span>
-              <el-button 
-                type="primary" 
+              <el-button
+                type="primary"
                 @click="sendMessage"
-                :loading="isStreaming"
-                :disabled="!messageInput.trim()"
+                :disabled="!messageInput.trim() || isStreaming"
               >
-                {{ isStreaming ? '生成中...' : '发送' }}
+                发送
               </el-button>
             </div>
           </div>
@@ -728,12 +728,18 @@ const handleWebSocketMessage = (data: string) => {
     if (index !== -1) {
       messages.value[index] = { ...lastMessage }
     }
-    
+
     // 滚动到底部
     nextTick(() => {
       scrollToBottom()
     })
   }
+}
+
+// 处理Shift+Enter换行
+const handleShiftEnter = (event: KeyboardEvent) => {
+  // textarea会在按下Enter时自动添加换行，这个函数主要是为了明确标记Shift+Enter的行为
+  // 不需要阻止默认行为，因为textarea会自动处理换行
 }
 
 const sendMessage = async () => {
