@@ -521,10 +521,24 @@ const {
   },
   onDisconnected: () => {
     console.log('WebSocket disconnected')
+    // 结束所有正在流式传输的消息
+    messages.value.forEach((msg, index) => {
+      if (msg.isStreaming || msg.loading) {
+        messages.value[index] = { ...msg, isStreaming: false, loading: false }
+      }
+    })
+    isStreaming.value = false
   },
   onError: (error) => {
     console.error('WebSocket error:', error)
     ElMessage.error(error)
+    // 发生错误时也结束流式状态
+    messages.value.forEach((msg, index) => {
+      if (msg.isStreaming || msg.loading) {
+        messages.value[index] = { ...msg, isStreaming: false, loading: false }
+      }
+    })
+    isStreaming.value = false
   }
 })
 
@@ -701,14 +715,44 @@ const loadMessages = async (conversationId: number) => {
 
 // 处理WebSocket消息
 const handleWebSocketMessage = (data: string) => {
+  // 检查是否是结束标记
+  if (data === '[DONE]' || data === '##[DONE]') {
+    console.log('Stream completed')
+    // 结束所有正在流式传输的消息
+    messages.value.forEach((msg, index) => {
+      if (msg.isStreaming || msg.loading) {
+        messages.value[index] = { ...msg, isStreaming: false, loading: false }
+      }
+    })
+    isStreaming.value = false
+    return
+  }
+
   try {
     // 尝试解析JSON消息
     const jsonData = JSON.parse(data)
     if (jsonData.type === 'error') {
       ElMessage.error(jsonData.message)
+      // 发生错误时也结束流式状态
+      messages.value.forEach((msg, index) => {
+        if (msg.isStreaming || msg.loading) {
+          messages.value[index] = { ...msg, isStreaming: false, loading: false }
+        }
+      })
+      isStreaming.value = false
       return
     }
     if (jsonData.type === 'connected') {
+      return
+    }
+    if (jsonData.type === 'done') {
+      // 另一种结束标记
+      messages.value.forEach((msg, index) => {
+        if (msg.isStreaming || msg.loading) {
+          messages.value[index] = { ...msg, isStreaming: false, loading: false }
+        }
+      })
+      isStreaming.value = false
       return
     }
   } catch {
@@ -722,7 +766,7 @@ const handleWebSocketMessage = (data: string) => {
     // 累积流式响应内容
     lastMessage.content += data
     lastMessage.loading = false  // 收到第一个内容后取消loading状态
-    
+
     // 强制触发响应式更新
     const index = messages.value.findIndex(m => m === lastMessage)
     if (index !== -1) {
