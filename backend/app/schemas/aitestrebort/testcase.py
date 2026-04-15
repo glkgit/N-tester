@@ -277,7 +277,7 @@ class aitestrebortAIGenerateTestCaseSchema(BaseModel):
     """AI生成测试用例请求模式"""
     requirement: str = Field(..., description="需求描述")
     module_id: int = Field(..., description="所属模块ID")
-    count: int = Field(1, description="生成数量", ge=1)
+    count: int = Field(1, description="生成数量", ge=1, le=100)
     context: Optional[str] = Field(None, description="上下文信息")
     llm_config_id: Optional[int] = Field(None, description="LLM配置ID")
     source_type: Optional[str] = Field("manual", description="需求来源类型：manual(手动输入)、document(需求文档)、requirement(需求条目)、module(需求模块)")
@@ -285,6 +285,14 @@ class aitestrebortAIGenerateTestCaseSchema(BaseModel):
     prompt_id: Optional[int] = Field(None, description="系统提示词ID")
     enable_knowledge: Optional[bool] = Field(False, description="是否启用知识库")
     knowledge_base_ids: Optional[List[str]] = Field(None, description="关联的知识库ID列表")
+    # 模板选项
+    include_precondition: Optional[bool] = Field(True, description="是否包含前置条件")
+    include_level: Optional[bool] = Field(True, description="是否包含用例等级")
+    levels: Optional[str] = Field("P0,P1,P2,P3", description="生成的用例等级，多个用逗号分隔")
+    include_compatibility: Optional[bool] = Field(False, description="是否包含兼容性测试")
+    compatibility_types: Optional[str] = Field("Web,iOS,Android", description="兼容性类型")
+    include_boundary: Optional[bool] = Field(True, description="是否包含边界值测试")
+    include_error: Optional[bool] = Field(True, description="是否包含异常处理")
 
 
 class aitestrebortAIOptimizeTestCaseSchema(BaseModel):

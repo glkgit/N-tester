@@ -97,55 +97,187 @@ class RealAITestCaseGenerator:
         """构建系统提示词"""
         return """你是一个专业的测试工程师，擅长根据需求描述生成高质量的测试用例。
 
-请根据用户提供的需求描述，生成结构化的测试用例。
+请根据用户提供的需求描述，生成测试用例。
 
-测试用例应该包含：
-1. 用例名称：简洁明确地描述测试目标
-2. 前置条件：执行测试前需要满足的条件
-3. 用例等级：P0(核心功能)、P1(重要功能)、P2(一般功能)、P3(边缘功能)
-4. 测试步骤：详细的操作步骤和预期结果
-5. 备注：补充说明（可选）
+【输出格式要求】
+每个用例输出为JSON格式，包含以下字段：
+- name: 用例名称，简洁明确
+- precondition: 前置条件，简短描述
+- steps: 步骤数组，每项包含 description(操作步骤) 和 expected_result(预期结果)
 
-请确保：
-- 测试步骤清晰、可执行
+【质量要求】
+- 步骤清晰、可执行
 - 预期结果明确、可验证
-- 覆盖正常流程和异常情况
-- 考虑边界条件和错误处理
+- 覆盖正常流程、异常流程、边界条件
+- 操作步骤和预期结果用分号或句号分隔
 
-输出格式必须是有效的JSON，符合以下结构：
-{
-  "name": "用例名称",
-  "precondition": "前置条件",
-  "level": "P0/P1/P2/P3",
-  "steps": [
-    {
-      "step_number": 1,
-      "description": "步骤描述",
-      "expected_result": "预期结果"
-    }
-  ],
-  "notes": "备注信息"
-}"""
-    
+【输出示例】
+[
+  {
+    "name": "创建任务-必填字段验证",
+    "precondition": "用户已登录系统",
+    "steps": [
+      {
+        "step_number": 1,
+        "description": "仅填写任务标题，不填写描述、优先级和截止时间",
+        "expected_result": "任务创建成功，标题为填写内容，描述为空，优先级默认为中"
+      }
+    ]
+  }
+]"""
+
+    def _build_system_prompt_with_options(self, template_options: Optional[Dict[str, Any]] = None) -> str:
+        """
+        根据模板选项构建动态系统提示词
+
+        Args:
+            template_options: 模板选项，包含：
+                - include_precondition: 是否包含前置条件
+                - include_level: 是否包含用例等级
+                - levels: 允许的等级列表
+                - include_compatibility: 是否包含兼容性测试
+                - compatibility_types: 兼容性类型
+                - include_boundary: 是否包含边界值测试
+                - include_error: 是否包含异常处理
+        """
+        if template_options is None:
+            template_options = {}
+
+        include_precondition = template_options.get('include_precondition', True)
+        include_level = template_options.get('include_level', True)
+        levels = template_options.get('levels', 'P0,P1,P2,P3')
+        include_compatibility = template_options.get('include_compatibility', False)
+        compatibility_types = template_options.get('compatibility_types', 'Web,iOS,Android')
+        include_boundary = template_options.get('include_boundary', True)
+        include_error = template_options.get('include_error', True)
+
+        prompt_parts = [
+            "你是一个专业的测试工程师，擅长根据需求描述生成高质量的测试用例。",
+            "",
+            "请根据用户提供的需求描述，生成测试用例。",
+            "",
+            "【输出格式要求】",
+            "每个用例输出为JSON格式，包含以下字段：",
+            "- name: 用例名称，简洁明确"
+        ]
+
+        if include_precondition:
+            prompt_parts.append("- precondition: 前置条件，简短描述")
+
+        if include_level:
+            prompt_parts.append(f"- level: 用例等级，取值范围：{levels}（P0=核心功能，P1=重要功能，P2=一般功能，P3=边缘功能）")
+            prompt_parts.append("  请根据需求选择合适的等级，确保P0级用例覆盖核心功能")
+
+        prompt_parts.extend([
+            "- steps: 步骤数组，每项包含 description(操作步骤) 和 expected_result(预期结果)"
+        ])
+
+        if include_compatibility:
+            prompt_parts.append("- compatibility: 兼容性测试（如适用）")
+
+        prompt_parts.extend([
+            "",
+            "【测试场景要求】"
+        ])
+
+        scenario_parts = []
+        scenario_parts.append("正常流程：验证功能在正常情况下的正确性")
+        if include_boundary:
+            scenario_parts.append("边界值：验证输入在边界值情况下的行为")
+        if include_error:
+            scenario_parts.append("异常流程：验证错误处理和异常情况")
+        if include_compatibility:
+            scenario_parts.append(f"兼容性：验证在不同环境下（{compatibility_types}）的行为")
+
+        prompt_parts.append("；".join(scenario_parts))
+
+        prompt_parts.extend([
+            "",
+            "【质量要求】",
+            "- 步骤清晰、可执行",
+            "- 预期结果明确、可验证",
+            "- 用例名称简洁明了"
+        ])
+
+        prompt_parts.extend([
+            "",
+            "【输出示例】"
+        ])
+
+        # 根据选项生成不同的示例
+        if include_level:
+            example = f'''[
+  {{
+    "name": "创建任务-必填字段验证",
+    "precondition": "用户已登录系统",
+    "level": "P0",
+    "steps": [
+      {{
+        "step_number": 1,
+        "description": "仅填写任务标题，不填写描述、优先级和截止时间",
+        "expected_result": "任务创建成功，标题为填写内容，描述为空，优先级默认为中"
+      }}
+    ]
+  }}'''
+        else:
+            example = '''[
+  {
+    "name": "创建任务-必填字段验证",
+    "precondition": "用户已登录系统",
+    "steps": [
+      {
+        "step_number": 1,
+        "description": "仅填写任务标题，不填写描述、优先级和截止时间",
+        "expected_result": "任务创建成功，标题为填写内容，描述为空，优先级默认为中"
+      }
+    ]
+  }'''
+
+        if include_compatibility:
+            example += ''',
+  {
+    "name": "创建任务-Web端兼容性",
+    "precondition": "用户已登录系统，使用Chrome浏览器",
+    "level": "P1",
+    "steps": [
+      {
+        "step_number": 1,
+        "description": "在Chrome浏览器中创建任务",
+        "expected_result": "创建成功，界面显示正常"
+      }
+    ]
+  }'''
+
+        example += "\n]"
+
+        prompt_parts.append(example)
+
+        return "\n".join(prompt_parts)
+
     async def generate_single_testcase(
         self,
         requirement: str,
-        context: Optional[str] = None
+        context: Optional[str] = None,
+        template_options: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         生成单个测试用例
-        
+
         Args:
             requirement: 需求描述
             context: 上下文信息（可选）
-            
+            template_options: 模板选项
+
         Returns:
             生成的测试用例数据
         """
         try:
+            # 根据模板选项构建提示词
+            system_prompt = self._build_system_prompt_with_options(template_options)
+
             # 构建消息
             messages = [
-                SystemMessage(content=self._build_system_prompt()),
+                SystemMessage(content=system_prompt),
                 HumanMessage(content=f"需求描述：{requirement}")
             ]
             
@@ -173,7 +305,7 @@ class RealAITestCaseGenerator:
                     raise ValueError("LLM response is not valid JSON")
             
             # 验证必需字段
-            required_fields = ['name', 'precondition', 'level', 'steps']
+            required_fields = ['name', 'steps']
             for field in required_fields:
                 if field not in testcase_data:
                     raise ValueError(f"Missing required field: {field}")
@@ -189,25 +321,27 @@ class RealAITestCaseGenerator:
         self,
         requirement: str,
         count: int = 3,
-        context: Optional[str] = None
+        context: Optional[str] = None,
+        template_options: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
         生成多个测试用例
-        
+
         Args:
             requirement: 需求描述
             count: 生成数量
             context: 上下文信息（可选）
-            
+            template_options: 模板选项
+
         Returns:
             生成的测试用例列表
         """
         try:
-            # 构建消息
-            system_prompt = self._build_system_prompt()
-            system_prompt += f"\n\n请生成 {count} 个不同类型的测试用例，包括正常流程、异常情况、边界条件等。"
+            # 根据模板选项构建提示词
+            system_prompt = self._build_system_prompt_with_options(template_options)
+            system_prompt += f"\n\n请生成 {count} 个测试用例，覆盖正常流程、异常流程、边界值等不同场景。"
             system_prompt += "\n输出格式为JSON数组：[{testcase1}, {testcase2}, ...]"
-            
+
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=f"需求描述：{requirement}")
@@ -238,15 +372,11 @@ class RealAITestCaseGenerator:
                 # 尝试多种方式提取JSON
                 extracted = False
 
-                # 方法1：提取数组格式
-                json_match = re.search(r'\[[\s\S]*\]', response_content)
-                if json_match:
-                    try:
-                        testcases_data = json.loads(json_match.group())
-                        if isinstance(testcases_data, list):
-                            extracted = True
-                    except:
-                        pass
+                # 方法1：使用括号计数提取完整的JSON数组（处理截断的JSON）
+                testcases_data = self._extract_complete_json_array(response_content)
+                if testcases_data is not None:
+                    extracted = True
+                    logger.info(f"方法1成功提取到 {len(testcases_data)} 个测试用例")
 
                 # 方法2：提取对象格式并包装成数组
                 if not extracted:
@@ -256,6 +386,7 @@ class RealAITestCaseGenerator:
                             obj = json.loads(json_match.group())
                             testcases_data = [obj]
                             extracted = True
+                            logger.info(f"方法2成功提取到 1 个测试用例")
                         except:
                             pass
 
@@ -274,6 +405,7 @@ class RealAITestCaseGenerator:
                         if not isinstance(testcases_data, list):
                             testcases_data = [testcases_data]
                         extracted = True
+                        logger.info(f"方法3成功提取到 {len(testcases_data)} 个测试用例")
                     except:
                         pass
 
@@ -286,7 +418,154 @@ class RealAITestCaseGenerator:
         except Exception as e:
             logger.error(f"Failed to generate multiple testcases: {str(e)}", exc_info=True)
             raise
-    
+
+    def _extract_complete_json_array(self, content: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        使用括号计数从截断的响应中提取完整的JSON数组
+
+        处理LLM输出被截断的情况，找到所有完整的JSON对象
+        """
+        import re
+
+        if not content:
+            return None
+
+        # 移除markdown代码块标记
+        content = re.sub(r'```(?:json)?\s*', '', content)
+        content = re.sub(r'\s*```', '', content)
+
+        # 移除行首的行号（如 "1. "）
+        content = re.sub(r'^\s*\d+\.\s*', '', content, flags=re.MULTILINE)
+
+        testcases = []
+        i = 0
+        n = len(content)
+
+        while i < n:
+            # 找到数组开始
+            while i < n and content[i] not in '[{':
+                i += 1
+
+            if i >= n:
+                break
+
+            if content[i] == '[':
+                # 找到数组开始，尝试用括号计数提取
+                bracket_count = 0
+                in_string = False
+                escape_next = False
+                start = i
+
+                j = i
+                while j < n:
+                    char = content[j]
+
+                    if escape_next:
+                        escape_next = False
+                        j += 1
+                        continue
+
+                    if char == '\\':
+                        escape_next = True
+                        j += 1
+                        continue
+
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        j += 1
+                        continue
+
+                    if in_string:
+                        j += 1
+                        continue
+
+                    if char == '{':
+                        bracket_count += 1
+                    elif char == '}':
+                        bracket_count -= 1
+
+                    j += 1
+
+                    # 当括号计数回到0，且在字符串外时，我们找到一个完整的数组或对象
+                    if bracket_count == 0 and not in_string:
+                        # 检查是否找到了完整的数组（以]结尾）
+                        while j < n and content[j] in ' \t\n\r':
+                            j += 1
+
+                        if j < n and content[j] == ']':
+                            j += 1  # 包含]
+                            try:
+                                arr = json.loads(content[start:j])
+                                if isinstance(arr, list):
+                                    # 验证每个元素都是有效的测试用例
+                                    for item in arr:
+                                        if isinstance(item, dict) and 'name' in item and 'steps' in item:
+                                            testcases.append(item)
+                                    if testcases:
+                                        return testcases
+                            except:
+                                pass
+                        break
+
+                i = j
+            elif content[i] == '{':
+                # 找到单个对象开始
+                bracket_count = 0
+                in_string = False
+                escape_next = False
+                start = i
+
+                j = i
+                while j < n:
+                    char = content[j]
+
+                    if escape_next:
+                        escape_next = False
+                        j += 1
+                        continue
+
+                    if char == '\\':
+                        escape_next = True
+                        j += 1
+                        continue
+
+                    if char == '"' and not escape_next:
+                        in_string = not in_string
+                        j += 1
+                        continue
+
+                    if in_string:
+                        j += 1
+                        continue
+
+                    if char == '{':
+                        bracket_count += 1
+                    elif char == '}':
+                        bracket_count -= 1
+
+                    j += 1
+
+                    if bracket_count == 0 and not in_string:
+                        try:
+                            obj = json.loads(content[start:j])
+                            if isinstance(obj, dict) and 'name' in obj and 'steps' in obj:
+                                testcases.append(obj)
+                                # 如果只找到一个对象且是有效的测试用例，返回包装的数组
+                                if len(testcases) == 1:
+                                    return testcases
+                        except:
+                            pass
+                        break
+
+                i = j
+            else:
+                i += 1
+
+        if testcases:
+            return testcases
+
+        return None
+
     async def optimize_testcase(
         self,
         testcase_data: Dict[str, Any],

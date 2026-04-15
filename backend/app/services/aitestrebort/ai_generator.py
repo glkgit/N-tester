@@ -560,7 +560,7 @@ async def generate_testcase_from_requirement(
 ):
     """
     根据需求生成测试用例 - 返回结构化的测试用例数据
-    
+
     Args:
         project_id: 项目ID
         generate_request: 生成请求参数
@@ -568,10 +568,18 @@ async def generate_testcase_from_requirement(
     try:
         # 生成结构化的测试用例数据，不保存到数据库
         return await _generate_testcase_preview(
-            request, project_id, generate_request.requirement, generate_request.module_id, 
+            request, project_id, generate_request.requirement, generate_request.module_id,
             generate_request.count, generate_request.context, generate_request.llm_config_id,
             generate_request.source_type, generate_request.source_id, generate_request.prompt_id,
-            generate_request.enable_knowledge, generate_request.knowledge_base_ids
+            generate_request.enable_knowledge, generate_request.knowledge_base_ids,
+            # 模板选项
+            generate_request.include_precondition,
+            generate_request.include_level,
+            generate_request.levels,
+            generate_request.include_compatibility,
+            generate_request.compatibility_types,
+            generate_request.include_boundary,
+            generate_request.include_error
         )
     except Exception as e:
         logger.error(f"生成测试用例失败: {str(e)}")
@@ -590,7 +598,15 @@ async def _generate_testcase_preview(
     source_id: Optional[str] = None,
     prompt_id: Optional[int] = None,
     enable_knowledge: Optional[bool] = False,
-    knowledge_base_ids: Optional[List[str]] = None
+    knowledge_base_ids: Optional[List[str]] = None,
+    # 模板选项
+    include_precondition: Optional[bool] = True,
+    include_level: Optional[bool] = True,
+    levels: Optional[str] = "P0,P1,P2,P3",
+    include_compatibility: Optional[bool] = False,
+    compatibility_types: Optional[str] = "Web,iOS,Android",
+    include_boundary: Optional[bool] = True,
+    include_error: Optional[bool] = True
 ):
     """
     生成测试用例预览数据（不保存到数据库）
@@ -706,6 +722,10 @@ async def _generate_testcase_preview(
             enhanced_context += f"\n\n知识库信息：{knowledge_context}"
 
         logger.info(f"使用真实的 LLM 生成器: provider={llm_config.provider}, model={llm_config.model_name}, base_url={llm_config.base_url}")
+        logger.info(f"请求生成测试用例数量: {count}")
+        # 最多允许生成100条测试用例
+        count = min(count, 100)
+        logger.info(f"最终生成测试用例数量: {count}")
 
         # 初始化真实的 AI 生成器（使用数据库模型对象）
         generator = RealAITestCaseGenerator(llm_config)
@@ -718,28 +738,34 @@ async def _generate_testcase_preview(
             enhanced_context = enhanced_context[:max_context_length] + "\n\n[内容已截断]"
 
         try:
+            # 构建模板选项
+            template_options = {
+                "include_precondition": include_precondition,
+                "include_level": include_level,
+                "levels": levels,
+                "include_compatibility": include_compatibility,
+                "compatibility_types": compatibility_types,
+                "include_boundary": include_boundary,
+                "include_error": include_error
+            }
+
             if count == 1:
-                testcase_data = await generator.generate_single_testcase(enhanced_requirement, enhanced_context)
+                testcase_data = await generator.generate_single_testcase(enhanced_requirement, enhanced_context, template_options)
                 testcases_data = [testcase_data]
             else:
-                testcases_data = await generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context)
+                testcases_data = await generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context, template_options)
         except Exception as llm_error:
-            # LLM 调用失败时，记录错误并回退到模拟生成器
-            logger.warning(f"LLM 调用失败: {str(llm_error)}，回退到模拟生成器")
-            mock_generator = AITestCaseGenerator()
-            if count == 1:
-                testcase_data = await mock_generator.generate_single_testcase(enhanced_requirement, enhanced_context[:3000])
-                testcases_data = [testcase_data]
-            else:
-                testcases_data = await mock_generator.generate_multiple_testcases(enhanced_requirement, count, enhanced_context[:3000])
+            # LLM 调用失败时，直接返回错误，方便排查问题
+            logger.error(f"LLM 调用失败: {str(llm_error)}", exc_info=True)
+            return request.app.error(msg=f"LLM 调用失败: {str(llm_error)}，请检查LLM配置是否正确")
         
         # 构建预览数据（包含完整的测试用例信息，但不保存到数据库）
         preview_testcases = []
         for testcase_data in testcases_data:
             preview_testcase = {
                 "name": testcase_data["name"],
-                "precondition": testcase_data["precondition"],
-                "level": testcase_data["level"],
+                "precondition": testcase_data.get("precondition", ""),
+                "level": testcase_data.get("level", "P1"),
                 "notes": testcase_data.get("notes", ""),
                 "steps": testcase_data["steps"],
                 "module_id": module_id,

@@ -68,19 +68,21 @@ async def websocket_conversation_endpoint(
     websocket: WebSocket,
     project_id: int,
     conversation_id: int,
-    token: str = Query(None, description="访问令牌")
+    token: str = Query(None, description="访问令牌"),
+    llm_config_id: int = Query(None, description="LLM配置ID（可选，不传则自动选择）")
 ):
     """WebSocket对话端点
-    
+
     Args:
         websocket: WebSocket连接
         project_id: 项目ID
         conversation_id: 对话ID
         token: JWT访问令牌（通过query参数传递）
+        llm_config_id: LLM配置ID（可选）
     """
     # 从token中获取用户信息
     user_id = 1  # 默认用户ID
-    
+
     if token:
         # 验证token并获取用户信息
         user_info = User.check_token(token, websocket.app.conf.token_secret_key)
@@ -90,6 +92,6 @@ async def websocket_conversation_endpoint(
             # Token无效，拒绝连接
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid token")
             return
-    
-    await handle_websocket_conversation(websocket, user_id, conversation_id, project_id)
+
+    await handle_websocket_conversation(websocket, user_id, conversation_id, project_id, llm_config_id)
 

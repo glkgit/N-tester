@@ -63,9 +63,9 @@
         <el-table-column label="操作步骤" width="350">
           <template #default="{ row }">
             <div class="steps-cell">
-              <div v-for="step in row.steps" :key="step.step_number" class="step-item">
-                <span class="step-number">{{ step.step_number }}.</span>
-                <div class="markdown-content" v-html="renderMarkdown(step.description)"></div>
+              <div v-for="(step, idx) in row.steps" :key="step.step_number || idx" class="step-item">
+                <span class="step-number">{{ (step.step_number || idx + 1) }}.</span>
+                <div class="markdown-content" v-html="renderMarkdown(step.description || step)"></div>
               </div>
             </div>
           </template>
@@ -74,9 +74,9 @@
         <el-table-column label="预期结果" width="350">
           <template #default="{ row }">
             <div class="expected-cell">
-              <div v-for="step in row.steps" :key="step.step_number" class="expected-item">
-                <span class="step-number">{{ step.step_number }}.</span>
-                <div class="markdown-content expected-text" v-html="renderMarkdown(step.expected_result)"></div>
+              <div v-for="(step, idx) in row.steps" :key="step.step_number || idx" class="expected-item">
+                <span class="step-number">{{ (step.step_number || idx + 1) }}.</span>
+                <div class="markdown-content expected-text" v-html="renderMarkdown(step.expected_result || '')"></div>
               </div>
             </div>
           </template>
@@ -84,13 +84,13 @@
         
         <el-table-column prop="level" label="等级" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="getLevelType(row.level)" size="small">{{ row.level }}</el-tag>
+            <el-tag :type="getLevelType(row.level)" size="small">{{ row.level || 'P1' }}</el-tag>
           </template>
         </el-table-column>
-        
+
         <el-table-column prop="notes" label="测试状态备注" width="200">
           <template #default="{ row }">
-            <div class="markdown-content notes-text" v-html="renderMarkdown(row.notes)"></div>
+            <div class="markdown-content notes-text" v-html="renderMarkdown(row.notes || '')"></div>
           </template>
         </el-table-column>
       </el-table>
