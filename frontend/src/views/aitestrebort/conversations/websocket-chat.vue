@@ -4,6 +4,25 @@
     <div class="chat-navbar">
       <div class="navbar-left">
         <h2>AI聊天助手</h2>
+        <div class="llm-config-selector">
+          <el-select
+            v-model="selectedLlmConfigId"
+            placeholder="选择AI模型"
+            size="default"
+            class="llm-select"
+            @change="handleLlmConfigChange"
+          >
+            <el-option
+              v-for="config in llmConfigs"
+              :key="config.id"
+              :label="config.name + ' (' + config.provider + ')'"
+              :value="config.id"
+            >
+              <span>{{ config.name }}</span>
+              <span class="config-provider">{{ config.provider }}</span>
+            </el-option>
+          </el-select>
+        </div>
       </div>
       <div class="navbar-right">
         <div class="connection-status">
@@ -234,6 +253,8 @@ const error = ref("");
 const messagesContainer = ref<HTMLElement>();
 const currentProjectId = ref<number>(1);
 const currentConversationId = ref<number | null>(null);
+const llmConfigs = ref<any[]>([]);
+const selectedLlmConfigId = ref<number | null>(null);
 
 // WebSocket 连接
 let ws: WebSocket | null = null;
@@ -265,6 +286,38 @@ const getValidProjectId = async () => {
   } catch (error) {
     console.error('获取有效项目ID失败:', error)
   }
+}
+
+// 获取LLM配置列表
+const fetchLlmConfigs = async () => {
+  try {
+    const response = await fetch('/api/aitestrebort/global/llm-configs', {
+      headers: {
+        'access-token': localStorage.getItem('access-token') || ''
+      }
+    })
+    const data = await response.json()
+    if (data.status === 200 && data.data) {
+      llmConfigs.value = data.data
+      // 默认选择第一个配置
+      if (llmConfigs.value.length > 0 && !selectedLlmConfigId.value) {
+        // 优先选择默认配置
+        const defaultConfig = llmConfigs.value.find((c: any) => c.is_default)
+        selectedLlmConfigId.value = defaultConfig?.id || llmConfigs.value[0].id
+        console.log('已选择LLM配置:', selectedLlmConfigId.value, defaultConfig?.name || llmConfigs.value[0].name)
+      }
+    }
+  } catch (error) {
+    console.error('获取LLM配置失败:', error)
+  }
+}
+
+// 处理LLM配置变更
+const handleLlmConfigChange = () => {
+  console.log('LLM配置已切换到:', selectedLlmConfigId.value)
+  // 重新连接WebSocket以使用新的配置
+  disconnectWebSocket()
+  connectWebSocket()
 }
 
 // 计算属性
@@ -305,8 +358,12 @@ const connectWebSocket = async () => {
     // 从localStorage获取token
     const token = localStorage.getItem('access-token') || '';
 
-    // 将token作为query参数传递
-    const wsUrl = `${protocol}//${hostname}:${port}/api/aitestrebort/projects/${projectId}/conversations/${conversationId}/ws?token=${encodeURIComponent(token)}`;
+    // 构建WebSocket URL，包含llm_config_id
+    let wsUrl = `${protocol}//${hostname}:${port}/api/aitestrebort/projects/${projectId}/conversations/${conversationId}/ws?token=${encodeURIComponent(token)}`;
+    if (selectedLlmConfigId.value) {
+      wsUrl += `&llm_config_id=${selectedLlmConfigId.value}`;
+    }
+    console.log('WebSocket URL:', wsUrl);
 
     ws = new WebSocket(wsUrl);
 
@@ -537,8 +594,11 @@ const generateId = () => {
 };
 
 // 生命周期
-onMounted(() => {
-  connectWebSocket();
+onMounted(async () => {
+  // 先获取LLM配置
+  await fetchLlmConfigs()
+  // 然后连接WebSocket
+  await connectWebSocket()
 });
 
 onUnmounted(() => {
@@ -565,11 +625,27 @@ onUnmounted(() => {
     border-bottom: 1px solid var(--el-border-color-light);
 
     .navbar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+
       h2 {
         margin: 0;
         font-size: 18px;
         font-weight: 600;
         color: var(--el-text-color-primary);
+      }
+
+      .llm-config-selector {
+        .llm-select {
+          width: 200px;
+        }
+
+        .config-provider {
+          float: right;
+          color: var(--el-text-color-secondary);
+          font-size: 12px;
+        }
       }
     }
 

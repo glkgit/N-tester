@@ -45,18 +45,46 @@ async def get_or_create_conversation(
         try:
             # 验证项目是否存在
             project = await aitestrebortProject.get(id=project_id)
-            
-            # 获取默认LLM配置
+
+            # 获取LLM配置（使用多层回退）
+            llm_config = None
+
+            # 1. 全局默认配置
             llm_config = await aitestrebortLLMConfig.filter(
                 project_id=None,
                 is_default=True,
                 is_active=True
             ).first()
-            
+
+            if not llm_config:
+                # 2. 任何全局活跃配置
+                llm_config = await aitestrebortLLMConfig.filter(
+                    project_id=None,
+                    is_active=True
+                ).first()
+
+            if not llm_config:
+                # 3. 项目的任何活跃配置
+                llm_config = await aitestrebortLLMConfig.filter(
+                    project_id=project_id,
+                    is_active=True
+                ).first()
+
+            if not llm_config:
+                # 4. 任何活跃配置（最后兜底）
+                llm_config = await aitestrebortLLMConfig.filter(
+                    is_active=True
+                ).first()
+
+            if llm_config:
+                logger.info(f"Creating conversation with LLM config: {llm_config.name}")
+            else:
+                logger.warning("No LLM config available, creating conversation without config")
+
             # 创建新对话
             import uuid
             session_id = f"ws-{uuid.uuid4().hex[:16]}"
-            
+
             conversation = await aitestrebortConversation.create(
                 project=project,
                 session_id=session_id,
@@ -65,10 +93,10 @@ async def get_or_create_conversation(
                 user_id=user_id,
                 is_active=True
             )
-            
+
             logger.info(f"Created new conversation {conversation.id} for project {project_id}")
             return conversation
-            
+
         except DoesNotExist:
             logger.error(f"Project {project_id} not found")
             return None
@@ -178,15 +206,23 @@ async def get_conversation_llm_config(
     conversation: aitestrebortConversation
 ) -> Optional[aitestrebortLLMConfig]:
     """
-    获取对话的LLM配置
-    
+    获取对话的LLM配置，支持多层回退：
+    1. 对话指定的配置
+    2. 全局默认配置
+    3. 全局任何活跃配置
+    4. 项目任何活跃配置
+    5. 任何活跃配置
+
     参数:
     - conversation: 对话记录
-    
+
     返回:
     - aitestrebortLLMConfig: LLM配置，如果失败返回None
     """
     try:
+        logger.info(f"get_conversation_llm_config called for conversation {conversation.id}")
+        logger.info(f"  conversation.llm_config_id = {conversation.llm_config_id}")
+        logger.info(f"  conversation.project_id = {conversation.project_id}")
         # 优先使用对话指定的配置
         if conversation.llm_config_id:
             try:
@@ -194,19 +230,62 @@ async def get_conversation_llm_config(
                     id=conversation.llm_config_id,
                     is_active=True
                 )
+                logger.info(f"Using conversation-specific LLM config: {llm_config.name}")
                 return llm_config
             except DoesNotExist:
-                pass
-        
-        # 使用默认配置
+                logger.warning(f"Conversation LLM config {conversation.llm_config_id} not found or inactive")
+
+        # 第二层：全局默认配置
+        logger.info("Trying: global default config (project_id=None, is_default=True, is_active=True)")
         llm_config = await aitestrebortLLMConfig.filter(
             project_id=None,
             is_default=True,
             is_active=True
         ).first()
-        
-        return llm_config
-        
+
+        if llm_config:
+            logger.info(f"Found global default LLM config: {llm_config.name}")
+            return llm_config
+        logger.warning("No global default config found")
+
+        # 第三层：任何全局活跃配置（不限default）
+        logger.info("Trying: any global active config (project_id=None, is_active=True)")
+        llm_config = await aitestrebortLLMConfig.filter(
+            project_id=None,
+            is_active=True
+        ).first()
+
+        if llm_config:
+            logger.info(f"Found global active LLM config: {llm_config.name}")
+            return llm_config
+        logger.warning("No global active config found")
+
+        # 第四层：项目的任何活跃配置
+        if conversation.project_id:
+            logger.info(f"Trying: project config (project_id={conversation.project_id}, is_active=True)")
+            llm_config = await aitestrebortLLMConfig.filter(
+                project_id=conversation.project_id,
+                is_active=True
+            ).first()
+
+            if llm_config:
+                logger.info(f"Found project LLM config: {llm_config.name}")
+                return llm_config
+            logger.warning(f"No project {conversation.project_id} config found")
+
+        # 第五层：任何活跃配置（最后兜底）
+        logger.info("Trying: any active config (is_active=True)")
+        llm_config = await aitestrebortLLMConfig.filter(
+            is_active=True
+        ).first()
+
+        if llm_config:
+            logger.warning(f"Found any active config: {llm_config.name}")
+            return llm_config
+
+        logger.error("No available LLM configuration found - all filters returned None")
+        return None
+
     except Exception as e:
         logger.error(f"Failed to get LLM config: {e}", exc_info=True)
         return None

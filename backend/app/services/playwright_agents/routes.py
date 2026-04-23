@@ -62,7 +62,17 @@ async def explore_and_plan(request: Request):
             except Exception as e:
                 logger.error(f"❌ 获取 MCP 配置失败: {str(e)}", exc_info=True)
         else:
-            logger.info("⚠️  未提供 mcp_config_id，将使用本地 Playwright")
+            # 如果没有提供 mcp_config_id，尝试使用环境变量中的默认 MCP URL
+            import os
+            default_mcp_url = os.getenv("N_TESTER_MCP_URL", "http://n-tester-mcp:8006/mcp")
+            # 确保 URL 以 /mcp 结尾
+            if not default_mcp_url.endswith('/mcp'):
+                default_mcp_url = default_mcp_url.rstrip('/') + '/mcp'
+            logger.info(f"⚠️  未提供 mcp_config_id，使用默认 MCP URL: {default_mcp_url}")
+            mcp_config = {
+                "url": default_mcp_url,
+                "headers": {}
+            }
         
         # 创建测试计划记录
         creator_id = getattr(request.state, 'user', None)
@@ -188,8 +198,8 @@ async def get_exploration_steps(request: Request, plan_id: int):
     try:
         plan = await PlaywrightTestPlan.get(id=plan_id)
         
-        # 从 exploration_result 中获取步骤
-        exploration_steps = plan.exploration_result.get('exploration_steps', [])
+        # 从 exploration_result 中获取步骤（添加空值保护）
+        exploration_steps = plan.exploration_result.get('exploration_steps', []) if plan.exploration_result else []
         
         return request.app.success(data={
             "plan_id": plan.id,

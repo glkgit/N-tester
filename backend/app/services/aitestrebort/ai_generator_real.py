@@ -342,6 +342,9 @@ class RealAITestCaseGenerator:
             system_prompt += f"\n\n请生成 {count} 个测试用例，覆盖正常流程、异常流程、边界值等不同场景。"
             system_prompt += "\n输出格式为JSON数组：[{testcase1}, {testcase2}, ...]"
 
+            logger.info(f"[generate_multiple] 模板选项: {template_options}")
+            logger.info(f"[generate_multiple] 生成提示词长度: {len(system_prompt)}")
+
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=f"需求描述：{requirement}")

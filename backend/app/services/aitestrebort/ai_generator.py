@@ -748,6 +748,7 @@ async def _generate_testcase_preview(
                 "include_boundary": include_boundary,
                 "include_error": include_error
             }
+            logger.info(f"模板选项: include_precondition={include_precondition}, include_level={include_level}, levels={levels}, include_boundary={include_boundary}, include_error={include_error}")
 
             if count == 1:
                 testcase_data = await generator.generate_single_testcase(enhanced_requirement, enhanced_context, template_options)

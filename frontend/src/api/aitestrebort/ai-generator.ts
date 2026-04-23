@@ -15,6 +15,14 @@ export interface AIGenerateRequest {
   prompt_id?: number
   enable_knowledge?: boolean
   knowledge_base_ids?: string[]
+  // 模板选项
+  include_precondition?: boolean
+  include_level?: boolean
+  levels?: string
+  include_compatibility?: boolean
+  compatibility_types?: string
+  include_boundary?: boolean
+  include_error?: boolean
 }
 
 export interface ConversationGenerateRequest {

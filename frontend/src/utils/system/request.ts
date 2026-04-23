@@ -26,7 +26,7 @@ const refreshToken = () => {
 
 const service: AxiosInstance = axios.create({
     baseURL: '', //baseURL,
-    timeout: 60000  // 毫秒
+    timeout: 300000  // 5分钟超时，AI生成测试用例可能需要较长时间
 })
 
 const getRequestId = () => {

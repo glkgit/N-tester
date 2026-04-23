@@ -111,17 +111,26 @@ class LLMService:
     
     def _init_ollama_client(self):
         """初始化Ollama客户端"""
+        import os
+        disable_ssl_verify = os.getenv("DISABLE_SSL_VERIFY", "").lower() in ("true", "1", "yes")
+
         self.client = httpx.AsyncClient(
             base_url=self.config.get("base_url", "http://localhost:11434"),
-            timeout=self.config.get("timeout", 60.0)
+            timeout=self.config.get("timeout", 60.0),
+            verify=not disable_ssl_verify
         )
     
     def _init_custom_client(self):
         """初始化自定义客户端"""
+        import os
+        # 检查是否禁用SSL验证（用于Docker内网环境）
+        disable_ssl_verify = os.getenv("DISABLE_SSL_VERIFY", "").lower() in ("true", "1", "yes")
+
         self.client = httpx.AsyncClient(
             base_url=self.config.get("base_url"),
             headers=self.config.get("headers", {}),
-            timeout=self.config.get("timeout", 60.0)
+            timeout=self.config.get("timeout", 60.0),
+            verify=not disable_ssl_verify  # 禁用SSL验证
         )
     
     async def chat_completion(
@@ -580,37 +589,38 @@ async def get_llm_service_by_id(llm_config_id: int) -> LLMService:
                     logger.warning(f"base_url包含端点路径'{endpoint}'，已自动移除")
                     break
             
-            # 确保base_url以/v1结尾（OpenAI兼容API通常需要）
-            if not base_url.endswith('/v1') and not base_url.endswith('/compatible-mode/v1'):
-                base_url = base_url.rstrip('/') + '/v1'
-                logger.info(f"base_url已自动添加/v1路径: {original_base_url} -> {base_url}")
+            # 移除末尾的 /v1 后缀，因为 _custom_chat_completion 会直接追加 /chat/completions 端点
+            # 用户可能配置了带 /v1 的 base_url（如 OpenAI），但 /v1 不是豆包API路径的一部分
+            if base_url.endswith('/v1'):
+                base_url = base_url[:-3]  # 移除 /v1
+                logger.info(f"base_url末尾包含'/v1'，已自动移除。原URL: {original_base_url}, 新URL: {base_url}")
         
         print(f"DEBUG: 获取到LLM配置:")
         print(f"  ID: {llm_config.id}")
         print(f"  Name: {llm_config.config_name}")
         print(f"  Original Base URL: {original_base_url}")
         print(f"  Processed Base URL: {base_url}")
-        print(f"  Model: {llm_config.name}")
+        print(f"  Model: {llm_config.model_name}")
         print(f"  API Key: {api_key[:30]}..." if len(api_key) > 30 else f"  API Key: {api_key}")
         
         logger.info(f"获取到LLM配置: ID={llm_config.id}, name={llm_config.config_name}")
         logger.info(f"Base URL: {original_base_url} -> {base_url}")
-        logger.info(f"Model: {llm_config.name}")
+        logger.info(f"Model: {llm_config.model_name}")
         logger.info(f"API Key: {api_key[:20]}..." if len(api_key) > 20 else f"API Key: {api_key}")
         
         # 构建配置
         config = {
             "provider": LLMProvider.CUSTOM,
             "base_url": base_url,
-            "model": llm_config.name,
+            "model": llm_config.model_name,
             "api_key": api_key,
-            "timeout": 60.0,
+            "timeout": 180.0,
             "headers": {
                 "Authorization": f"Bearer {api_key}"
             }
         }
-        
-        logger.info(f"创建LLM服务实例，配置: base_url={base_url}, model={llm_config.name}")
+
+        logger.info(f"创建LLM服务实例，配置: base_url={base_url}, model={llm_config.model_name}")
         
         # 创建新的服务实例（不缓存，因为可能是临时使用）
         service = LLMService(
@@ -618,7 +628,7 @@ async def get_llm_service_by_id(llm_config_id: int) -> LLMService:
             config=config
         )
         
-        logger.info(f"✓ 使用指定LLM配置: {llm_config.config_name} ({llm_config.name})")
+        logger.info(f"✓ 使用指定LLM配置: {llm_config.config_name} ({llm_config.model_name})")
         return service
         
     except Exception as e:

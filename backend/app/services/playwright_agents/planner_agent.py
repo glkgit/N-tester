@@ -203,14 +203,11 @@ class PlannerAgent:
                 
                 logger.info(f"✅ 导航完成")
                 
-                # 2. 获取页面快照（使用官方工具）
+                # 2. 获取页面快照
                 logger.info(f"📸 获取页面快照...")
                 snapshot_result = await session.call_tool(
-                    "call_playwright_tool",
-                    {
-                        "tool_name": "browser_snapshot",
-                        "arguments": {}
-                    }
+                    "browser_snapshot",
+                    {}
                 )
                 
                 # 3. 获取截图（使用增强工具）

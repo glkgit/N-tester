@@ -81,9 +81,16 @@ class ConversationWebSocketManager:
 websocket_manager = ConversationWebSocketManager()
 
 
-async def handle_websocket_conversation(websocket: WebSocket, user_id: int, conversation_id: int, project_id: int = 1):
+async def handle_websocket_conversation(websocket: WebSocket, user_id: int, conversation_id: int, project_id: int = 1, llm_config_id: int = None):
     """
     处理WebSocket对话连接
+
+    Args:
+        websocket: WebSocket连接
+        user_id: 用户ID
+        conversation_id: 对话ID
+        project_id: 项目ID
+        llm_config_id: LLM配置ID（可选）
     """
     await websocket_manager.connect(websocket, user_id, conversation_id)
     
@@ -132,7 +139,7 @@ async def handle_websocket_conversation(websocket: WebSocket, user_id: int, conv
             await save_message(conversation, 'user', user_message)
             
             # 处理AI回复
-            await process_ai_response(websocket, conversation, user_message, user_id)
+            await process_ai_response(websocket, conversation, user_message, user_id, llm_config_id)
             
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected normally: conversation_id={conversation_id}")
@@ -149,14 +156,40 @@ async def handle_websocket_conversation(websocket: WebSocket, user_id: int, conv
         websocket_manager.disconnect(user_id, conversation_id)
 
 
-async def process_ai_response(websocket: WebSocket, conversation: aitestrebortConversation, user_message: str, user_id: int):
+async def process_ai_response(websocket: WebSocket, conversation: aitestrebortConversation, user_message: str, user_id: int, llm_config_id: int = None):
     """
     处理AI回复，实现流式响应
+
+    Args:
+        websocket: WebSocket连接
+        conversation: 对话记录
+        user_message: 用户消息
+        user_id: 用户ID
+        llm_config_id: 指定的LLM配置ID（可选）
     """
     try:
         # 获取LLM配置
-        llm_config = await get_conversation_llm_config(conversation)
-        
+        llm_config = None
+
+        # 如果指定了配置ID，优先使用
+        if llm_config_id:
+            try:
+                llm_config = await aitestrebortLLMConfig.get(id=llm_config_id, is_active=True)
+                logger.info(f"Using specified LLM config: {llm_config.name} (ID: {llm_config_id})")
+            except DoesNotExist:
+                logger.warning(f"Specified LLM config {llm_config_id} not found, falling back to default")
+
+        # 如果没有指定或指定的配置不存在，使用对话的配置
+        if not llm_config:
+            llm_config = await get_conversation_llm_config(conversation)
+
+        # 调试：检查LLM配置情况
+        if not llm_config:
+            logger.warning(f"No LLM config found for conversation {conversation.id}")
+            # 打印当前数据库中的所有配置
+            all_configs = await aitestrebortLLMConfig.all().values_list('id', 'name', 'is_active', 'is_default', 'project_id')
+            logger.warning(f"Current LLM configs in DB: {all_configs}")
+
         if not llm_config:
             await websocket.send_text(json.dumps({
                 'type': 'error',

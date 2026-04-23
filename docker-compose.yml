@@ -59,6 +59,8 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:-Rebort}
       - DB_NAME=${DB_NAME:-test_platform}
       - AUTO_INIT_DB=${AUTO_INIT_DB:-true}
+      - DISABLE_SSL_VERIFY=true
+      - N_TESTER_MCP_URL=http://n-tester-mcp:8006/mcp
     ports:
       - "8018:8018"
       - "8019:8019"
@@ -71,6 +73,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      n-tester-mcp:
+        condition: service_started
     networks:
       - test-platform-network
     healthcheck:
@@ -91,6 +95,29 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - test-platform-network
+    restart: unless-stopped
+
+  # N-Tester MCP 服务
+  n-tester-mcp:
+    build:
+      context: ./N-Tester_MCP
+      dockerfile: Dockerfile
+    container_name: n-tester-mcp
+    environment:
+      - N_TESTER_HOST=0.0.0.0
+      - N_TESTER_PORT=8006
+      - N-Tester_API_KEY=N-Tester-default-mcp-key-2025
+      - ENABLE_PLAYWRIGHT_INTEGRATION=false
+      - PLAYWRIGHT_MODE=http
+      - PLAYWRIGHT_HTTP_URL=http://playwright-mcp:3000
+      - ENABLE_ENHANCED_TOOLS=true
+      - ENABLE_NAVIGATION_HISTORY=true
+      - TOOL_CALL_TIMEOUT=60
+      - LOG_LEVEL=INFO
+    ports:
+      - "8006:8006"
     networks:
       - test-platform-network
     restart: unless-stopped
